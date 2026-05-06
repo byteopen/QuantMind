@@ -3,25 +3,20 @@ FROM node:20.19.0-alpine AS builder
 
 WORKDIR /app
 
-# 1. 复制所有必要的文件（包括 root 和 workspace 的 package.json）
-# 因为 npm workspaces 需要读取子目录下的 package.json 来正确解析依赖树
+# 1. 复制 root 和 workspace 的 package.json，让 npm 感知完整的多包结构
 COPY package*.json ./
 COPY electron/package*.json ./electron/
 
-# 2. 安装所有依赖（包含 workspaces 的依赖）
+# 2. 统一安装所有依赖（包含 workspaces 的依赖），依靠上一步的配置，这里会成功解析
 RUN npm install --ignore-scripts
 
-# 3. 复制全部源码
+# 3. 复制全部源码（包括 scripts 目录）
 COPY . .
 
-# 4. 手动触发 workspaces 内部的依赖安装（如果 root install 没有覆盖到 devDependencies）
-# 针对 electron 目录再次执行 install，确保 @vitejs/plugin-react 等被安装
-RUN npm install --prefix electron --ignore-scripts
-
-# 5. 执行必要的前置脚本
+# 4. 手动执行后置脚本，此时 monaco-editor 等资源已经在 node_modules 中就绪了
 RUN npm run postinstall --if-present
 
-# 6. 注入环境变量并构建生产代码
+# 5. 注入环境变量并构建生产代码
 ENV VITE_API_BASE_URL=""
 RUN npm run dashboard:build
 
@@ -34,7 +29,6 @@ RUN npm install -g pm2
 # 从构建阶段拷贝编译产物
 COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/electron/dist-react ./electron/dist-react
-# 注意：生产环境如果需要 node_modules 支撑某些 API，保留此行。如果是纯静态前端，可能不需要。
 COPY --from=builder /app/node_modules ./node_modules
 
 EXPOSE 3000
