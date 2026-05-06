@@ -1,36 +1,42 @@
-# docker/Dockerfile.web
+# ================= 1. 构建阶段 (保持不变) =================
 FROM node:20.19.0-alpine AS builder
 
 WORKDIR /app
-
-# 1. 复制 root 和 workspace 的 package.json，让 npm 感知完整的多包结构
 COPY package*.json ./
 COPY electron/package*.json ./electron/
-
-# 2. 统一安装所有依赖（包含 workspaces 的依赖），依靠上一步的配置，这里会成功解析
 RUN npm install --ignore-scripts
-
-# 3. 复制全部源码（包括 scripts 目录）
 COPY . .
-
-# 4. 手动执行后置脚本，此时 monaco-editor 等资源已经在 node_modules 中就绪了
 RUN npm run postinstall --if-present
-
-# 5. 注入环境变量并构建生产代码
 ENV VITE_API_BASE_URL=""
 RUN npm run dashboard:build
 
-# ================= 运行阶段 =================
-FROM node:20.19.0-alpine
-WORKDIR /app
+# ================= 2. 运行阶段 (切换为 Nginx) =================
+FROM nginx:alpine
 
-RUN npm install -g pm2
+# 清空默认的静态文件
+RUN rm -rf /usr/share/nginx/html/*
 
-# 从构建阶段拷贝编译产物
-COPY --from=builder /app/package*.json ./
-COPY --from=builder /app/electron/dist-react ./electron/dist-react
-COPY --from=builder /app/node_modules ./node_modules
+# 从 builder 阶段仅复制编译好的静态产物 (不需要 node_modules)
+COPY --from=builder /app/electron/dist-react /usr/share/nginx/html
 
-EXPOSE 3000
+# 写入针对 SPA 应用的 Nginx 配置文件 (解决前端路由刷新 404 问题)
+RUN echo 'server { \
+    listen 80; \
+    server_name _; \
+    root /usr/share/nginx/html; \
+    index index.html index.htm; \
+    location / { \
+        try_files $uri $uri/ /index.html; \
+    } \
+    # 静态资源缓存策略 \
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg)$ { \
+        expires 30d; \
+        add_header Cache-Control "public, no-transform"; \
+    } \
+}' > /etc/nginx/conf.d/default.conf
 
-CMD ["pm2-runtime", "start", "npm", "--name", "quantmind-web", "--", "run", "dashboard:preview"]
+# 暴露 80 端口
+EXPOSE 80
+
+# 启动 Nginx (默认 entrypoint 会接管)
+CMD ["nginx", "-g", "daemon off;"]
