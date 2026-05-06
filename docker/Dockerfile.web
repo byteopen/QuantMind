@@ -1,0 +1,32 @@
+# docker/Dockerfile.web
+FROM node:20.19.0-alpine AS builder
+
+WORKDIR /app
+# 复制 package.json 和锁文件
+COPY package*.json ./
+# 安装依赖
+RUN npm install
+
+# 复制全部前端源码
+COPY . .
+# 注入环境变量（如有需要）并构建生产代码
+ENV VITE_API_BASE_URL=""
+RUN npm run dashboard:build
+
+# 运行阶段
+FROM node:20.19.0-alpine
+WORKDIR /app
+
+# 安装 pm2 用于生产环境进程管理
+RUN npm install -g pm2
+
+# 从构建阶段拷贝编译产物
+COPY --from=builder /app/package*.json ./
+COPY --from=builder /app/electron/dist-react ./electron/dist-react
+COPY --from=builder /app/node_modules ./node_modules
+
+# 暴露端口
+EXPOSE 3000
+
+# 启动前端预览服务
+CMD ["pm2-runtime", "start", "npm", "--name", "quantmind-web", "--", "run", "dashboard:preview"]
