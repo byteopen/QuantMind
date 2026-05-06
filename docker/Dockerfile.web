@@ -2,22 +2,28 @@
 FROM node:20.19.0-alpine AS builder
 
 WORKDIR /app
-# 复制 package.json 和锁文件
+# 1. 只复制 package.json 和锁文件以利用缓存
 COPY package*.json ./
-# 安装依赖
-RUN npm install
 
-# 复制全部前端源码
+# 2. 【核心修改】添加 --ignore-scripts 参数
+# 这样 npm 只会安装依赖，不会在此时去执行 postinstall 脚本
+RUN npm install --ignore-scripts
+
+# 3. 复制全部前端源码（此时 scripts 目录也被拷贝进来了）
 COPY . .
-# 注入环境变量（如有需要）并构建生产代码
+
+# 4. 【核心修改】手动触发 postinstall 脚本
+# 这样能够确保 monaco-editor 等静态资源被正确拷贝到 public 目录
+RUN npm run postinstall --if-present
+
+# 5. 注入环境变量并构建生产代码
 ENV VITE_API_BASE_URL=""
 RUN npm run dashboard:build
 
-# 运行阶段
+# ================= 运行阶段 =================
 FROM node:20.19.0-alpine
 WORKDIR /app
 
-# 安装 pm2 用于生产环境进程管理
 RUN npm install -g pm2
 
 # 从构建阶段拷贝编译产物
@@ -25,8 +31,6 @@ COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/electron/dist-react ./electron/dist-react
 COPY --from=builder /app/node_modules ./node_modules
 
-# 暴露端口
 EXPOSE 3000
 
-# 启动前端预览服务
 CMD ["pm2-runtime", "start", "npm", "--name", "quantmind-web", "--", "run", "dashboard:preview"]
