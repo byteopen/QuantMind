@@ -34,7 +34,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image_name }}
+          images: ${{ secrets.DOCKER_USERNAME }}/${{ matrix.image_name }}
           tags: |
             type=ref,event=tag
             type=ref,event=branch
