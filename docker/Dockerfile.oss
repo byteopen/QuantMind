@@ -17,13 +17,19 @@ ENV PYTHONUNBUFFERED=1 \
 WORKDIR /app
 
 # 配置 APT 镜像源
+# 定义一个构建参数，默认关闭
+ARG USE_MIRROR=false
+
+# 修改源的逻辑：只有当 USE_MIRROR=true 时才替换为阿里云
 RUN set -eux; \
-    if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
-      sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources; \
-      sed -i 's/security.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources; \
-    else \
-      sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list; \
-      sed -i 's/security.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list; \
+    if [ "$USE_MIRROR" = "true" ]; then \
+      if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
+        sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources; \
+        sed -i 's/security.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources; \
+      else \
+        sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list; \
+        sed -i 's/security.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list; \
+      fi; \
     fi
 
 # 安装系统依赖
